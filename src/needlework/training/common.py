@@ -17,16 +17,21 @@ from needlework.constants import ACTION_DIM_PER_ARM, ACTION_LAYOUT, SPATIAL
 from needlework.data import features
 from needlework.data.splits import split_episodes
 from needlework.data.store import EpisodeStore
+from needlework.geometry.actions import ActionLayout
 from needlework.sampling import policy_dataset
-from needlework.sampling.observations import RobomimicObservations, UmiObservations
+from needlework.sampling.observations import make_observations
 from needlework.sampling.policy_dataset import PolicyDataset, WindowShape
 
 
-def identity_dims(n_arms: int, parts: list[str]) -> np.ndarray:
+def identity_dims(
+    n_arms: int, parts: list[str], layout: ActionLayout | None = None
+) -> np.ndarray:
     """Action dimensions left unnormalized: the listed parts of every arm."""
-    dims = np.zeros((n_arms, ACTION_DIM_PER_ARM), dtype=bool)
+    width = layout.width if layout else ACTION_DIM_PER_ARM
+    fields = layout.parts if layout else ACTION_LAYOUT
+    dims = np.zeros((n_arms, width), dtype=bool)
     for part in parts:
-        low, high = ACTION_LAYOUT[part]
+        low, high = fields[part]
         dims[:, low:high] = True
     return dims.reshape(-1)
 
@@ -48,14 +53,7 @@ class Windows:
         self.store = EpisodeStore.open(task.domain, task.name)
         self.features = features.load(self.store, SPATIAL) if cameras else {}
         keys = (*(task.obs.cameras if cameras else ()), *task.obs.proprio)
-        if task.domain == "robomimic":
-            self.observations = RobomimicObservations(self.store, self.features, keys)
-        elif task.domain == "umi":
-            self.observations = UmiObservations(
-                self.store, self.features, keys, task.start_noise
-            )
-        else:
-            raise ValueError(f"unknown domain {task.domain}")
+        self.observations = make_observations(self.store, self.features, keys, task)
         self.shape = WindowShape(
             horizon=cfg.horizon.prediction,
             n_obs=cfg.horizon.obs,
@@ -95,6 +93,6 @@ class Windows:
             data,
             proprio_identity=tuple(task.proprio_identity),
             action_identity_dims=identity_dims(
-                len(self.store.spec.arms), list(task.action_identity)
+                len(self.store.spec.arms), list(task.action_identity), self.store.layout
             ),
         )

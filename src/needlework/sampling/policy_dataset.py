@@ -52,6 +52,8 @@ class PolicyDataset:
         self.observations = observations
         self.shape = shape
         self.relative_actions = relative_actions
+        if store.domain == "lerobot" and (relative_actions or shape.stride != 1):
+            raise ValueError("LeRobot data requires absolute targets at stride=1")
         self.train = train
         self.windows = enumerate_windows(
             store.episode_ends,

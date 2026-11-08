@@ -20,7 +20,9 @@ from needlework.models.dinov3 import POOLINGS
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--domain", required=True, choices=["robomimic", "umi"])
+    parser.add_argument(
+        "--domain", required=True, choices=["robomimic", "umi", "lerobot"]
+    )
     parser.add_argument("--task", required=True)
     parser.add_argument(
         "--poolings", required=True, nargs="+", choices=sorted(POOLINGS)

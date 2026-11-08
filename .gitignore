@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 .venv/
+.venv310/
 
 # Tool caches
 .pytest_cache/
@@ -18,6 +19,9 @@ dist/
 *.pth
 wandb/
 outputs/
+/data/
+/cache/
+*.npz
 MUJOCO_LOG.TXT
 
 # Keep these tracked even where a parent ignore file excludes data/ or *.json.

@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "action_mode": "joint",
+  "action_semantics": "unknown",
+  "action_row_offset": null,
+  "task_index": null,
+  "units": {"position": "m", "joint": "rad", "gripper": "motor_rad"},
+  "rotation_6d": "columns",
+  "joint_names": [],
+  "gripper_range": [0.0, 2.0],
+  "timestamp_tolerance_s": null,
+  "video_tolerance_s": null,
+  "fields": {
+    "action_joint": {"column": "actions.arm_joints"},
+    "action_gripper": {"column": "actions.gripper"},
+    "observation_joint": {"column": "observations.arm_joints"},
+    "observation_gripper": {"column": "observations.gripper"}
+  },
+  "cameras": {
+    "camera_front": {"key": "observation.images.front", "timestamp_offset_s": 0.0},
+    "camera_wrist": {"key": "observation.images.wrist", "timestamp_offset_s": 0.0}
+  },
+  "evidence": {
+    "action_source": "",
+    "time_alignment": "",
+    "control_and_sampling": "",
+    "coordinates_and_units": "",
+    "outcomes": ""
+  }
+}

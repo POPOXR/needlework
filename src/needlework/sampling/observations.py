@@ -66,6 +66,21 @@ class RobomimicObservations:
         return {key: source[frames] for key, source in self.sources.items()}
 
 
+def make_observations(store, features, keys, task):
+    """One dispatch for both training and stitch scoring."""
+    if store.domain == "umi":
+        return UmiObservations(store, features, keys, task.start_noise)
+    if store.domain == "lerobot":
+        mode = "joint" if store.spec.joint_names else "ee"
+        if task.action_mode != mode:
+            raise ValueError(f"task.action_mode must match the imported {mode} actions")
+        if task.relative_actions or task.stride != 1:
+            raise ValueError("LeRobot targets require absolute actions and stride=1")
+    elif store.domain != "robomimic":
+        raise ValueError(f"unknown domain {store.domain}")
+    return RobomimicObservations(store, features, keys)
+
+
 class UmiObservations:
     SIDES = ("left", "right")
 

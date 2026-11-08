@@ -27,7 +27,7 @@ from needlework.models.dinov3 import POOLINGS
 from needlework.models.idm import IdmPolicy
 from needlework.models.policy import PolicyShape
 from needlework.models.verifier import Verifier
-from needlework.sampling.observations import RobomimicObservations, UmiObservations
+from needlework.sampling.observations import make_observations
 from needlework.stitching.candidates import max_prefix_lengths
 from needlework.training import checkpoint
 from needlework.training.batches import to_device
@@ -138,11 +138,7 @@ class Scorer:
         self.spatial = features.open_rows(store, SPATIAL)
         self.patches = features.open_rows(store, PATCHES)
         keys = (*task.obs.cameras, *task.obs.proprio)
-        self.observations = (
-            RobomimicObservations(store, self.spatial, keys)
-            if task.domain == "robomimic"
-            else UmiObservations(store, self.spatial, keys, task.start_noise)
-        )
+        self.observations = make_observations(store, self.spatial, keys, task)
         self.horizon = (
             self.model_cfg.horizon.prediction - self.model_cfg.horizon.obs + 1
         )

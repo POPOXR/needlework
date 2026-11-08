@@ -31,7 +31,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
     reason = _data_missing()
     if reason is not None:
         for item in items:
-            item.add_marker(pytest.mark.skip(reason=reason))
+            if item.get_closest_marker("cpu") is None:
+                item.add_marker(pytest.mark.skip(reason=reason))
 
 
 @pytest.fixture(scope="session")

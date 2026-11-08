@@ -1,0 +1,8 @@
+defaults:
+  - lerobot/_base@_here_
+  - _self_
+action_mode: ee
+action_identity: [rotation_6d]
+proprio_identity: [right_ee_rot6d]
+obs:
+  proprio: [right_ee_pos, right_ee_rot6d, right_gripper]

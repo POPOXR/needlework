@@ -6,6 +6,9 @@ absolute in the store's frame (see needlework.data.schema). Two transforms exist
 - ``to_relative``: express each arm's pose relative to a base pose (UMI trains on
   actions relative to the current gripper pose). The gripper value passes through.
 - ``to_env_command``: rotation_6d -> axis-angle, the robosuite OSC absolute command.
+
+LeRobot joint layouts instead carry N absolute joint positions and one gripper
+value. Pose transforms reject these layouts; no FK/IK is inferred here.
 """
 
 from __future__ import annotations
@@ -30,25 +33,51 @@ _GRIPPER = slice(*ACTION_LAYOUT["gripper"])
 @dataclass(frozen=True)
 class ActionLayout:
     arms: tuple[str, ...]
+    joint_names: tuple[str, ...] = ()
 
     @classmethod
     def from_spec(cls, action_spec: dict) -> ActionLayout:
-        """Build from a store's ``action`` attribute; rejects any other layout."""
-        if dict(action_spec["layout_per_arm"]) != ACTION_LAYOUT:
+        """Read the canonical pose or explicitly named absolute-joint layout."""
+        names = tuple(action_spec.get("joint_names", ()))
+        expected = (
+            {"joint_position": [0, len(names)], "gripper": [len(names), len(names) + 1]}
+            if names
+            else ACTION_LAYOUT
+        )
+        if dict(action_spec["layout_per_arm"]) != expected:
             layout = action_spec["layout_per_arm"]
             raise ValueError(f"unsupported action layout {layout}")
-        return cls(arms=tuple(str(arm) for arm in action_spec["arms"]))
+        return cls(
+            arms=tuple(str(arm) for arm in action_spec["arms"]), joint_names=names
+        )
+
+    @property
+    def parts(self) -> dict[str, list[int]]:
+        if self.joint_names:
+            n = len(self.joint_names)
+            return {"joint_position": [0, n], "gripper": [n, n + 1]}
+        return ACTION_LAYOUT
+
+    @property
+    def width(self) -> int:
+        return len(self.joint_names) + 1 if self.joint_names else ACTION_DIM_PER_ARM
 
     @property
     def dim(self) -> int:
-        return ACTION_DIM_PER_ARM * len(self.arms)
+        return self.width * len(self.arms)
 
     def per_arm(self, actions: np.ndarray) -> np.ndarray:
-        """[..., dim] -> [..., n_arms, 10]."""
+        """[..., dim] -> [..., n_arms, width]."""
         actions = np.asarray(actions, dtype=np.float32)
         if actions.shape[-1] != self.dim:
             raise ValueError(f"expected action dim {self.dim}, got {actions.shape}")
-        return actions.reshape(*actions.shape[:-1], len(self.arms), ACTION_DIM_PER_ARM)
+        return actions.reshape(*actions.shape[:-1], len(self.arms), self.width)
+
+    def require_ee(self) -> None:
+        if self.joint_names:
+            raise ValueError(
+                "joint targets cannot be converted to poses without robot FK/IK"
+            )
 
 
 def _checked_base(layout: ActionLayout, base_poses: np.ndarray) -> np.ndarray:
@@ -61,6 +90,7 @@ def _checked_base(layout: ActionLayout, base_poses: np.ndarray) -> np.ndarray:
 
 def action_poses(layout: ActionLayout, actions: np.ndarray) -> np.ndarray:
     """[..., dim] -> per-arm homogeneous poses [..., n_arms, 4, 4]."""
+    layout.require_ee()
     arms = layout.per_arm(actions)
     return pose_matrix(arms[..., _POSITION], rot6d_to_matrix(arms[..., _ROTATION]))
 
@@ -89,6 +119,7 @@ def to_relative(
 
 def to_env_command(layout: ActionLayout, actions: np.ndarray) -> np.ndarray:
     """[..., dim] -> [..., 7 * n_arms]: position | axis-angle | gripper per arm."""
+    layout.require_ee()
     arms = layout.per_arm(actions)
     rotvec = matrix_to_axis_angle(rot6d_to_matrix(arms[..., _ROTATION]))
     out = np.concatenate([arms[..., _POSITION], rotvec, arms[..., _GRIPPER]], axis=-1)

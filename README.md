@@ -1,5 +1,12 @@
 <h1 align="center">Needlework: Offline Rewriting of Robot Data with Verified Local Stitches</h1>
 
+> **LeRobot v2 right-arm adaptation:** This fork adds absolute joint targets,
+> explicit column/row rotation-6D conversion, verified-action imports, and bridge
+> supervision export. Start with the [中文使用说明](docs/lerobot_zh.md) and
+> [真实数据核实 / AI 交接说明](docs/lerobot_data_handoff_zh.md).
+> Real-data validation and GPU training are still required; template mappings are
+> deliberately incomplete until recording semantics are verified.
+
 <p align="center">
   <a href="https://needle-work.github.io/"><img alt="Project website" src="https://img.shields.io/badge/website-needlework-2f855a"></a>
   <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue">

@@ -1,0 +1,22 @@
+domain: lerobot
+name: ???
+stride: 1
+relative_actions: false
+# Initial settings for a new robot; tune on held-out episodes, not on the test set.
+bridge_weight: 0.5
+role_weights: {skipped: 1.0, twin: 0.5, failure_departure: 0.5, approach: 1.0}
+epoch_length: windows
+sampler_options: {path_start: aligned, twin_rows: all, draw: with_replacement, source_rows: supervised, after_departure: all}
+stitch_sources_per_stage: 1024
+stitch_candidate_spacing: 24
+stitch_targets_per_source: {stage1: 8, stage2: 8, stage3: 8}
+stitch_max_candidates_per_stage: {stage1: 8192, stage2: 8192, stage3: 8192}
+stitch_threshold_offsets: {stage1: 0.0, stage2: 0.0, stage3: 0.0}
+stitch_keep_fraction: {stage1: 1.0, stage2: 1.0, stage3: 1.0}
+verifier_serving:
+  mode: independent
+  hold_probability: 0.5
+epochs: {policy: 300, idm: 150, verifier: 40}
+obs:
+  # Import aliases, not assumed names in the source dataset. Override as needed.
+  cameras: [camera_front, camera_wrist]

@@ -27,7 +27,7 @@ class EpisodeStore:
     spec: StoreSpec
     layout: ActionLayout
     store_paths: dict[str, Path]  # outcome -> store directory
-    identity: dict[str, str]  # outcome -> sha256 of the archive it was unpacked from
+    identity: dict[str, str]  # outcome -> archive/import content+provenance sha256
     episode_ends: np.ndarray  # int64 [E], exclusive, over the concatenated view
     episode_success: np.ndarray  # bool [E]
     arrays: dict[str, np.ndarray]  # action and proprioception, float32 [T, D]
@@ -39,16 +39,23 @@ class EpisodeStore:
         return cls.open_paths(
             domain=domain,
             task=task,
-            store_paths={outcome: task_dir / f"{outcome}.zarr" for outcome in OUTCOMES},
+            store_paths={
+                outcome: task_dir / f"{outcome}.zarr"
+                for outcome in OUTCOMES
+                if domain != "lerobot" or (task_dir / f"{outcome}.zarr").exists()
+            },
         )
 
     @classmethod
     def open_paths(
         cls, *, domain: str, task: str, store_paths: dict[str, Path]
     ) -> EpisodeStore:
-        if tuple(store_paths) != OUTCOMES:
+        if tuple(store_paths) != OUTCOMES and not (
+            domain == "lerobot" and tuple(store_paths) == ("success",)
+        ):
             raise ValueError(f"store_paths must be ordered {OUTCOMES}")
-        spec = spec_for(domain, task)
+        attrs = dict(zarr.open(str(store_paths["success"]), mode="r").attrs)
+        spec = spec_for(domain, task, attrs=attrs)
         ends, success, identity = [], [], {}
         # Simulator state is for resets, never for training, so it is not loaded.
         numeric: dict[str, list[np.ndarray]] = {
@@ -57,10 +64,16 @@ class EpisodeStore:
         offset = 0
         for outcome, path in store_paths.items():
             validate_store(path, domain=domain, task=task)
+            if (
+                spec_for(domain, task, attrs=dict(zarr.open(str(path), mode="r").attrs))
+                != spec
+            ):
+                raise ValueError("success and failure stores must share the same spec")
             marker = path.with_name(path.name + ".sha256")
             if not marker.is_file():
                 raise FileNotFoundError(
-                    f"{marker} is missing; unpack stores with needlework.data.download."
+                    f"{marker} is missing; "
+                    "use the dataset downloader or LeRobot importer."
                 )
             identity[outcome] = marker.read_text().strip()
             root = zarr.open(str(path), mode="r")

@@ -1,0 +1,8 @@
+defaults:
+  - lerobot/_base@_here_
+  - _self_
+action_mode: joint
+action_identity: []
+proprio_identity: []
+obs:
+  proprio: [right_joint_position, right_gripper]

@@ -4,6 +4,12 @@ A store holds episodes of one task. Released stores are split by outcome
 (``success.zarr``, ``failure.zarr``) but carry a per-episode success flag, so stores
 concatenate along episodes without losing outcomes.
 
+The ``lerobot`` extension stores a validated per-import ``store_spec`` attribute.
+Its single right arm may use absolute joint targets [N joints | gripper], or the
+existing 10D pose layout. Cameras/proprioception are explicit in that spec; images
+use lossless Blosc. Only the pose layout has rotation_6d dimensions. LeRobot actions
+are command targets; measured-state fallback logs are rejected by its importer.
+
     <store>.zarr/
     ├── .zattrs                 {"domain", "task", "action": ACTION_SPEC}
     ├── meta/
@@ -36,7 +42,7 @@ Images: one frame per chunk, lossless JPEG-XL. Numeric arrays: Blosc-zstd.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +50,7 @@ import zarr
 from imagecodecs.numcodecs import register_codecs
 
 from needlework.constants import ACTION_DIM_PER_ARM, ACTION_LAYOUT, IMAGE_SHAPE
+from needlework.geometry.actions import ActionLayout
 
 ROTATION_6D = (
     "first two rows of the rotation matrix, row-major; "
@@ -65,19 +72,27 @@ class StoreSpec:
     cameras: tuple[str, ...]
     proprio: dict[str, int]  # key -> width
     state_dim: int | None  # None: no simulator state
+    joint_names: tuple[str, ...] = ()  # nonempty: absolute joint targets, then gripper
 
     @property
     def action_dim(self) -> int:
-        return ACTION_DIM_PER_ARM * len(self.arms)
+        return ActionLayout(self.arms, self.joint_names).dim
 
     def action_spec(self) -> dict:
-        return {
+        result = {
             "arms": list(self.arms),
             "layout_per_arm": ACTION_LAYOUT,
             "rotation_6d": ROTATION_6D,
             "frame": self.frame,
             "gripper": self.gripper,
         }
+        if self.joint_names:
+            result.pop("rotation_6d")
+            result.update(
+                layout_per_arm=ActionLayout(self.arms, self.joint_names).parts,
+                joint_names=list(self.joint_names),
+            )
+        return result
 
     def data_widths(self) -> dict[str, int]:
         widths = {"action": self.action_dim, **self.proprio}
@@ -136,17 +151,38 @@ SPECS: dict[tuple[str, str], StoreSpec] = {
 }
 
 
-def spec_for(domain: str, task: str) -> StoreSpec:
+def spec_for(domain: str, task: str, *, attrs: dict | None = None) -> StoreSpec:
     """UMI shares one spec across tasks; robomimic tasks differ in cameras and arms."""
+    if domain == "lerobot":
+        if attrs is None or "store_spec" not in attrs:
+            raise ValueError(
+                "LeRobot stores require the converter's store_spec metadata"
+            )
+        raw = dict(attrs["store_spec"])
+        for key in ("arms", "cameras", "joint_names"):
+            raw[key] = tuple(raw[key])
+        spec = StoreSpec(**raw)
+        if spec.arms != ("right",) or spec.state_dim is not None:
+            raise ValueError(
+                "LeRobot adapter supports a right arm without simulator state"
+            )
+        return spec
     return _UMI if domain == "umi" else SPECS[(domain, task)]
 
 
-def store_attrs(domain: str, task: str) -> dict:
-    return {
+def store_attrs(domain: str, task: str, spec: StoreSpec | None = None) -> dict:
+    spec = spec if spec is not None else spec_for(domain, task)
+    attrs = {
         "domain": domain,
         "task": task,
-        "action": spec_for(domain, task).action_spec(),
+        "action": spec.action_spec(),
     }
+    if domain == "lerobot":
+        # JSON round-trip makes tuple/list equality independent of Zarr serialization.
+        import json
+
+        attrs["store_spec"] = json.loads(json.dumps(asdict(spec)))
+    return attrs
 
 
 def _check_rotation_6d(path: Path, action: np.ndarray, num_arms: int) -> None:
@@ -167,9 +203,9 @@ def validate_store(path: Path, *, domain: str, task: str) -> tuple[int, int]:
 
     Raises on any missing, extra, or malformed array or attribute.
     """
-    spec = spec_for(domain, task)
     root = zarr.open(str(path), mode="r")
-    if dict(root.attrs) != store_attrs(domain, task):
+    spec = spec_for(domain, task, attrs=dict(root.attrs))
+    if dict(root.attrs) != store_attrs(domain, task, spec):
         raise ValueError(f"{path}: attrs {dict(root.attrs)} do not match the spec")
     if set(root.group_keys()) != {"meta", "data"} or set(root.array_keys()):
         raise ValueError(f"{path}: top level must be exactly meta/ and data/")
@@ -199,5 +235,8 @@ def validate_store(path: Path, *, domain: str, task: str) -> tuple[int, int]:
         array = root[f"data/{key}"]
         if array.shape != (num_frames, width) or array.dtype != np.float32:
             raise ValueError(f"{path}: {key} {array.shape} {array.dtype}")
-    _check_rotation_6d(path, root["data/action"][:], len(spec.arms))
+        if domain == "lerobot" and not np.isfinite(array[:]).all():
+            raise ValueError(f"{path}: {key} contains non-finite values")
+    if not spec.joint_names:
+        _check_rotation_6d(path, root["data/action"][:], len(spec.arms))
     return len(ends), int(success.sum())
